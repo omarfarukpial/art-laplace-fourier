@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Harmonic Bloom</title>
+<meta name="description" content="A closed curve drawn by Fourier epicycles, extended inward by Laplace's equation.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one full-bleed instrument; the type sits in the four corners like the
+   captions on a plate from a nineteenth-century mathematical memoir. */
+:root {
+  --mode: dark;
+  --ground: #060a12;        /* Prussian night */
+  --field-rim: #e8edf1;     /* light emitted near the boundary */
+  --field-deep: #4e6fb3;    /* light emitted deep in the field */
+  --field-thread: #8ea3c4;  /* the lines of constant x */
+  --brass: #d3a75b;         /* the Fourier machine */
+  --text: #cdd5df;
+  --text-dim: #7c899c;
+  --rule: rgba(160, 178, 204, 0.22);
+  --panel: rgba(8, 13, 23, 0.9);
+  --serif: "STIX Two Text", "STIX Two", "Cambria Math", Cambria, Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --gutter: clamp(16px, 3.2vw, 40px);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --mode: light;
+    --ground: #e9ecea;       /* cool paper */
+    --field-rim: #13213b;    /* Prussian-blue ink */
+    --field-deep: #5a77a8;
+    --field-thread: #73839b;
+    --brass: #94661c;
+    --text: #1b2536;
+    --text-dim: #5a6577;
+    --rule: rgba(27, 37, 54, 0.2);
+    --panel: rgba(236, 239, 237, 0.94);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --mode: light;
+  --ground: #e9ecea;
+  --field-rim: #13213b;
+  --field-deep: #5a77a8;
+  --field-thread: #73839b;
+  --brass: #94661c;
+  --text: #1b2536;
+  --text-dim: #5a6577;
+  --rule: rgba(27, 37, 54, 0.2);
+  --panel: rgba(236, 239, 237, 0.94);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--text);
+  font: 400 15px/1.55 var(--serif);
+  -webkit-font-smoothing: antialiased;
+}
+canvas { display: block; }
+#field, #machine { position: fixed; inset: 0; width: 100%; height: 100%; }
+#machine { touch-action: none; cursor: grab; }
+#machine:active { cursor: grabbing; }
+
+.corner { position: fixed; z-index: 2; pointer-events: none; }
+.corner > * { pointer-events: auto; }
+.tl { top: calc(var(--gutter) + env(safe-area-inset-top, 0px)); left: var(--gutter); }
+.tr { top: calc(var(--gutter) + env(safe-area-inset-top, 0px)); right: var(--gutter); text-align: right; }
+.bl { bottom: calc(var(--gutter) + env(safe-area-inset-bottom, 0px)); left: var(--gutter); }
+.br { bottom: calc(var(--gutter) + env(safe-area-inset-bottom, 0px)); right: var(--gutter); }
+
+h1 {
+  margin: 0;
+  font: italic 400 clamp(26px, 3.1vw, 38px)/1 var(--serif);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.label {
+  font: 500 10px/1.5 var(--mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.tl .label { margin-top: 10px; }
+
+.plate { display: grid; gap: 4px; justify-items: end; }
+.plate-no { font: italic 400 22px/1 var(--serif); font-variant-numeric: lining-nums; }
+.plate-no span { font-style: normal; font-size: 13px; color: var(--text-dim); margin-right: 6px; }
+#plate-meta, #plate-ks { font: 400 11px/1.45 var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+#plate-ks { max-width: 34ch; }
+
+.equations { display: grid; gap: 7px; max-width: min(430px, calc(100vw - 2 * var(--gutter))); }
+.eq { display: grid; grid-template-columns: 6.6em 1fr; align-items: baseline; gap: 12px; }
+.eq .label { white-space: nowrap; }
+.eq .m { font-size: 16px; white-space: nowrap; overflow-x: auto; }
+.m i { font-style: italic; }
+.m sup, .m sub { font-size: 0.68em; line-height: 0; }
+.m .sum { font-size: 1.2em; font-style: normal; margin-right: 0.08em; position: relative; top: 0.06em; }
+#spectrum { width: 236px; height: 48px; margin-top: 6px; }
+.spectrum-row { display: grid; grid-template-columns: 6.6em 1fr; gap: 12px; align-items: end; }
+
+.controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 2px; max-width: 400px; }
+.controls button {
+  appearance: none; border: 0; background: none; color: var(--text);
+  font: 500 10.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 8px 9px; border-radius: 2px; cursor: pointer; opacity: 0.78;
+  transition: opacity 0.2s, color 0.2s;
+}
+.controls button:hover { opacity: 1; }
+.controls button[aria-pressed="false"] { color: var(--text-dim); text-decoration: line-through; text-decoration-color: var(--rule); }
+.controls button kbd { font: inherit; color: var(--brass); margin-right: 5px; }
+button:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; opacity: 1; }
+
+#about {
+  position: fixed; z-index: 5; top: 0; right: 0; bottom: 0;
+  width: min(440px, 100%);
+  background: var(--panel);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-left: 1px solid var(--rule);
+  padding-block: calc(var(--gutter) + env(safe-area-inset-top, 0px)) calc(var(--gutter) + env(safe-area-inset-bottom, 0px));
+  padding-inline: var(--gutter);
+  overflow-y: auto;
+}
+#about h2 { margin: 0 0 18px; font: italic 400 26px/1.1 var(--serif); }
+#about h3 { margin: 26px 0 6px; font: 500 10px/1.5 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--brass); }
+#about p { margin: 0 0 10px; max-width: 62ch; }
+#about .m { display: block; margin: 8px 0 12px; font-size: 16px; overflow-x: auto; white-space: nowrap; }
+#about dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+#about dt { font: 500 11px/1.9 var(--mono); color: var(--brass); }
+#about dd { margin: 0; }
+#btn-close { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 12px; }
+
+#nogl { position: fixed; inset: 0; display: grid; place-items: center; padding-inline: var(--gutter); text-align: center; }
+
+@media (max-width: 720px) {
+  .tr { top: auto; bottom: calc(var(--gutter) + 92px + env(safe-area-inset-bottom, 0px)); right: var(--gutter); }
+  .bl .equations .eq:nth-child(2), .spectrum-row { display: none; }
+  .br { left: var(--gutter); }
+  .controls { justify-content: flex-start; max-width: none; margin-left: -9px; }
+  .bl { bottom: calc(var(--gutter) + 92px + env(safe-area-inset-bottom, 0px)); }
+  .tr { display: none; }
+}
+@media (max-width: 720px), (hover: none) {
+  .controls kbd { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .controls button { transition: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="field" aria-hidden="true"></canvas>
+<canvas id="machine" aria-label="Harmonic Bloom: a Fourier curve and its Laplace field. Drag to orbit, scroll to zoom, tap for the next plate." role="img"></canvas>
+
+<header class="corner tl">
+  <h1>Harmonic Bloom</h1>
+  <div class="label">Fourier draws the edge &middot; Laplace fills the depth</div>
+</header>
+
+<div class="corner tr">
+  <div class="plate" aria-live="polite">
+    <div class="plate-no"><span>Pl.</span><b id="plate-no" style="font-weight:400">I</b></div>
+    <div id="plate-meta">5-fold</div>
+    <div id="plate-ks"></div>
+  </div>
+</div>
+
+<div class="corner bl">
+  <div class="equations">
+    <div class="eq"><span class="label">Fourier</span>
+      <span class="m"><i>&gamma;</i>(<i>x</i>) = <span class="sum">&Sigma;</span><i>c<sub>k</sub></i> <i>e</i><sup><i>ikx</i></sup></span></div>
+    <div class="eq"><span class="label">Laplace</span>
+      <span class="m"><i>u<sub>xx</sub></i> + <i>u<sub>yy</sub></i> = 0, &ensp;<i>u</i>(<i>x</i>, 0) = <i>&gamma;</i>(<i>x</i>)</span></div>
+    <div class="eq"><span class="label">Solution</span>
+      <span class="m"><i>u</i>(<i>x</i>, <i>y</i>) = <span class="sum">&Sigma;</span><i>c<sub>k</sub></i> <i>e</i><sup>&minus;|<i>k</i>|<i>y</i></sup> <i>e</i><sup><i>ikx</i></sup></span></div>
+    <div class="spectrum-row"><span class="label">|c<sub>k</sub>| by k</span><canvas id="spectrum" aria-hidden="true"></canvas></div>
+  </div>
+</div>
+
+<nav class="corner br" aria-label="Controls">
+  <div class="controls">
+    <button type="button" id="btn-prev" data-action="prev" aria-label="Previous plate"><kbd>&larr;</kbd>Prev</button>
+    <button type="button" id="btn-next" data-action="next" aria-label="Next plate"><kbd>&rarr;</kbd>Next</button>
+    <button type="button" id="btn-pause" data-action="pause"><kbd>&#9251;</kbd><span>Pause</span></button>
+    <button type="button" id="btn-machine" data-action="machine" aria-pressed="false"><kbd>E</kbd>Epicycles</button>
+    <button type="button" id="btn-threads" data-action="threads" aria-pressed="true"><kbd>F</kbd>Threads</button>
+    <button type="button" id="btn-view" data-action="view"><kbd>V</kbd><span>Plan</span></button>
+    <button type="button" id="btn-theme" data-action="theme"><kbd>T</kbd>Theme</button>
+    <button type="button" id="btn-save" data-action="save"><kbd>S</kbd>Save</button>
+    <button type="button" id="btn-about" data-action="about" aria-expanded="false" aria-controls="about"><kbd>I</kbd>About</button>
+  </div>
+</nav>
+
+<aside id="about" hidden aria-labelledby="about-title">
+  <div class="controls"><button type="button" id="btn-close" aria-label="Close">Close</button></div>
+  <h2 id="about-title">How the plate is drawn</h2>
+
+  <h3>The edge, by Fourier</h3>
+  <p>Any closed curve is a sum of circles turning at whole-number speeds. The brass machine is that sum made literal: one circle for each coefficient <i>c<sub>k</sub></i>, largest first, the pen at the end of the chain.</p>
+  <span class="m"><i>&gamma;</i>(<i>x</i>) = <span class="sum">&Sigma;</span><i>c<sub>k</sub></i> <i>e</i><sup><i>ikx</i></sup>, &ensp; <i>k</i> &equiv; <i>&sigma;</i> (mod <i>m</i>)</span>
+  <p>Keeping every frequency in one residue class mod <i>m</i> gives the curve <i>m</i>-fold symmetry, whatever the amplitudes and phases. Those phases drift slowly, so the plate never quite repeats.</p>
+
+  <h3>The depth, by Laplace</h3>
+  <p>Treat the curve as the edge of a half-cylinder and ask for the steady state that edge would impose, the way heat or electric potential settles. That is Laplace's equation, and its bounded solution damps each harmonic at a rate set by its frequency:</p>
+  <span class="m"><i>u<sub>xx</sub></i> + <i>u<sub>yy</sub></i> = 0 &ensp;&rArr;&ensp; <i>u</i>(<i>x</i>, <i>y</i>) = <span class="sum">&Sigma;</span><i>c<sub>k</sub></i> <i>e</i><sup>&minus;|<i>k</i>|<i>y</i></sup> <i>e</i><sup><i>ikx</i></sup></span>
+  <p>Fine detail dies first. Deep enough, only the slowest circle is left, and every point sinks toward <i>c</i><sub>0</sub>, the mean of the edge. With <i>r</i> = <i>e</i><sup>&minus;<i>y</i></sup> this is the Poisson integral of the curve on the unit disc.</p>
+
+  <h3>Reading the plate</h3>
+  <dl>
+    <dt>Rings</dt><dd>The curve at <span id="ring-count">220</span> depths <i>y</i>, each falling a little further into the funnel.</dd>
+    <dt>Threads</dt><dd>Lines of constant <i>x</i>: the path one point of the edge takes as it sinks.</dd>
+    <dt>Probe</dt><dd>The dotted brass line follows the point under the pen.</dd>
+    <dt>Spectrum</dt><dd>|<i>c<sub>k</sub></i>| for every frequency in play, square-root scaled.</dd>
+  </dl>
+
+  <h3>Controls</h3>
+  <dl>
+    <dt>Drag</dt><dd>Orbit the funnel. Scroll or pinch to zoom.</dd>
+    <dt>Tap &middot; &rarr;</dt><dd>Next plate. Plates morph into one another.</dd>
+    <dt>V</dt><dd>Switch between plan and elevation.</dd>
+    <dt>E &middot; F</dt><dd>Show or hide the epicycles and the threads.</dd>
+  </dl>
+</aside>
+
+<div id="nogl" hidden><p>This piece needs WebGL 2. Try a current version of Chrome, Edge, Firefox or Safari.</p></div>
+
+<script src="js/harmonic.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/overlay.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
